@@ -12,3 +12,11 @@
 | 4 | 全连接 + 降采样层 + swish   |
 | 5 | 全连接   |
 | 输出 | output  |
+
+## 执行顺序
+
+1.python3 gen_sample_by_captcha.py
+
+2.python3 verify_and_split_data.py
+
+3.python3 main.py
