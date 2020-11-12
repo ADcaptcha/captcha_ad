@@ -170,7 +170,7 @@ class AdModel(tf.keras.Model):
 
     # 评估指标(准确率)
     @tf.function
-    def metric_func(self, y_true, y_pred):
+    def metric_func(self, y_pred,y_true):
         predict = tf.reshape(y_pred, [-1, max_captcha, char_set_len])
         max_idx_p = tf.argmax(predict, 2)
         max_idx_l = tf.argmax(tf.reshape(y_true, [-1, max_captcha, char_set_len]), 2)
