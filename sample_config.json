@@ -1,0 +1,16 @@
+{
+  "origin_image_dir": "sample/origin/",
+  "new_image_dir": "sample/new_train/",
+  "train_image_dir": "sample/train/",
+  "test_image_dir": "sample/test/",
+  "local_image_dir": "sample/local/",
+  "model_save_dir": "model/",
+  "image_width": 100,
+  "image_height": 60,
+  "max_captcha": 4,
+  "image_suffix": "png",
+  "char_set": "0123456789abcdefghijklmnopqrstuvwxyz",
+  "acc_stop": 0.99,
+  "train_batch_size": 128,
+  "test_batch_size": 100
+}
