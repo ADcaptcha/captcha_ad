@@ -157,7 +157,28 @@ class AdModel(tf.keras.Model):
         output= self.dense2(x)
         return output
 
-#打印时间分割线
+    # 损失函数
+    @tf.function
+    def loss_func(self, features, y_true):
+        with tf.GradientTape() as tape:
+            y_pred = model(features, training=True)
+            loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=y_pred, labels=y_true, name="loss"))
+        grads = tape.gradient(loss, model.trainable_variables)
+        optimizer.apply_gradients(grads_and_vars=zip(grads, model.trainable_variables))
+
+        return loss
+
+    # 评估指标(准确率)
+    @tf.function
+    def metric_func(self, y_true, y_pred):
+        predict = tf.reshape(y_pred, [-1, max_captcha, char_set_len])
+        max_idx_p = tf.argmax(predict, 2)
+        max_idx_l = tf.argmax(tf.reshape(y_true, [-1, max_captcha, char_set_len]), 2)
+        correct_pred = tf.equal(max_idx_p, max_idx_l)
+        acc = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+        return acc
+
+    #打印时间分割线
 @tf.function
 def printbar():
     today_ts = tf.timestamp()%(24*60*60)
@@ -177,17 +198,8 @@ def printbar():
     tf.print("=========="*8+timestring)
 
 
-@tf.function
-def train_step(model, features, labels):
-    with tf.GradientTape() as tape:
-        y_pred = model(features, training=True)
-        loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=y_pred, labels=labels, name="loss"))
-    grads = tape.gradient(loss, model.trainable_variables)
-    optimizer.apply_gradients(grads_and_vars=zip(grads, model.trainable_variables))
-
-    return loss
-
 if __name__ == '__main__':
+
 
     with open("sample_config.json", "r") as f:
         sample_conf = json.load(f)
@@ -211,7 +223,6 @@ if __name__ == '__main__':
     char_set = [str(i) for i in char_set]
 
     train_images_list = os.listdir(train_image_dir)
-
     # 打乱文件顺序
     random.seed(time.time())
 
@@ -234,21 +245,20 @@ if __name__ == '__main__':
     else:
         raise TrainError("图片转换为矩阵时出错，请检查图片格式")
 
+    save_point =os.path.abspath(".") + '/save/model.ckpt'
     accuracy = 0.0
     keep_prob = 0.75
     is_save_model=True
-    total = 20
-    sum = 0
-    log_dir = 'adtb_logs'
+    log_dir = 'tb_logs'
     model = AdModel("admodel")
     optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
     # sparse_categorical_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     checkpoint = tf.train.Checkpoint(myAwesomeModel=model, myAwesomeOptimizer=optimizer)
-    checkpoint.restore(tf.train.latest_checkpoint('/home/xbk/demo1/savead'))
+    checkpoint.restore(tf.train.latest_checkpoint('./save'))
 
     summary_writer = tf.summary.create_file_writer(log_dir)  # 实例化记录器
     tf.summary.trace_on(graph=True, profiler=True)  # 开启Trace（可选）
-      # 保存Trace信息到文件（可选）
+
     step = 1
     while True:
         batch_x, batch_y = get_batch(step, size=train_batch_size)
@@ -256,7 +266,7 @@ if __name__ == '__main__':
         batch_y = batch_y.astype(np.float32)
         X = tf.reshape(batch_x, shape=[-1, image_height, image_width, 1])
 
-        loss = train_step(model,X,batch_y)
+        loss = model.loss_func(X,batch_y)
         with summary_writer.as_default():  # 指定记录器
             tf.summary.scalar("loss", loss, step=step)  # 将当前损失函数的值写入记录器
         # 每100 step计算一次准确率
@@ -269,26 +279,18 @@ if __name__ == '__main__':
             batch_x_test = tf.reshape(batch_x_test, shape=[-1, image_height, image_width, 1])
             # model.training = False
             y_pred = model.predict(batch_x_test)
-            predict = tf.reshape(y_pred, [-1, max_captcha, char_set_len])
-            max_idx_p = tf.argmax(predict, 2)
-            max_idx_l = tf.argmax(tf.reshape(batch_y_test, [-1, max_captcha, char_set_len]), 2)
-            correct_pred = tf.equal(max_idx_p, max_idx_l)
-            acc_char = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+            acc_char = model.metric_func(y_pred,batch_y_test)
 
             batch_x_verify, batch_y_verify = get_verify_batch(size=test_batch_size)
             batch_y_verify = batch_y_verify.astype(np.float32)
             batch_x_verify = batch_x_verify.astype(np.float32)
             batch_x_verify = tf.reshape(batch_x_verify, shape=[-1, image_height, image_width, 1])
-            # model.training = False
+
             y_pred_verify= model.predict(batch_x_verify)
-            predict_verify = tf.reshape(y_pred_verify, [-1, max_captcha, char_set_len])
-            max_idx_p_verify = tf.argmax(predict_verify, 2)
-            max_idx_l_verify = tf.argmax(tf.reshape(batch_y_verify, [-1, max_captcha, char_set_len]), 2)
-            correct_pred_verify = tf.equal(max_idx_p_verify, max_idx_l_verify)
-            acc_image = tf.reduce_mean(tf.cast(correct_pred_verify, tf.float32))
+            acc_image = model.metric_func(y_pred_verify, batch_y_verify)
             if(acc_image>accuracy):
                 accuracy = acc_image
-            print("第{}次训练 >>>  最高测试准确率为 {:.5f},测试准确率为100%的次数{}".format(step, accuracy,sum))
+            print("第{}次训练 >>>  最高测试准确率为 {:.5f}".format(step, accuracy))
             print("[训练集] 字符准确率为 {:.5f} 验证准确率为 {:.5f} >>> loss {:.10f}".format(acc_char, acc_image, loss))
             with summary_writer.as_default():  # 指定记录器
                 tf.summary.scalar("loss", loss, step=step)  # 将当前损失函数的值写入记录器
@@ -296,8 +298,9 @@ if __name__ == '__main__':
                 tf.summary.scalar("Trainaccuracy", acc_char, step=step,description="Train")
 
             if step % 1000 == 0:
-                checkpoint.save('./savead/model.ckpt')
+                checkpoint.save(save_point)
                 if (is_save_model):
+                    # 保存Trace信息到文件（可选）
                     with summary_writer.as_default():
                         tf.summary.trace_export(name="model_trace", step=0, profiler_outdir=log_dir)
                     is_save_model = False
@@ -305,11 +308,8 @@ if __name__ == '__main__':
                 #
             # 如果准确率大于50%,保存模型,完成训练
             if acc_image.numpy() > 0.999:
-                sum += 1
-                if sum >= total:
                     print("good nice")
-                    tf.saved_model.save(model, './modelad/crack_capcha.h5')
-
+                    tf.saved_model.save(model, './model/crack_capcha.h5')
                     break
 
         step += 1
