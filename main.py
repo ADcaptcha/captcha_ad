@@ -175,8 +175,9 @@ class AdModel(tf.keras.Model):
         max_idx_p = tf.argmax(predict, 2)
         max_idx_l = tf.argmax(tf.reshape(y_true, [-1, max_captcha, char_set_len]), 2)
         correct_pred = tf.equal(max_idx_p, max_idx_l)
-        acc = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
-        return acc
+        acc_char_count = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+        acc_image_count = tf.reduce_mean(tf.reduce_min(tf.cast(correct_pred, tf.float32), axis=1))
+        return acc_char_count,acc_image_count
 
     #打印时间分割线
 @tf.function
@@ -201,7 +202,7 @@ def printbar():
 if __name__ == '__main__':
 
 
-    with open("sample_config.json", "r") as f:
+    with open("conf/sample_config.json", "r") as f:
         sample_conf = json.load(f)
 
     train_image_dir = sample_conf["train_image_dir"]
@@ -279,7 +280,7 @@ if __name__ == '__main__':
             batch_x_test = tf.reshape(batch_x_test, shape=[-1, image_height, image_width, 1])
             # model.training = False
             y_pred = model.predict(batch_x_test)
-            acc_char = model.metric_func(y_pred,batch_y_test)
+            train_acc_char_count,train_acc_image_count = model.metric_func(y_pred,batch_y_test)
 
             batch_x_verify, batch_y_verify = get_verify_batch(size=test_batch_size)
             batch_y_verify = batch_y_verify.astype(np.float32)
@@ -287,15 +288,17 @@ if __name__ == '__main__':
             batch_x_verify = tf.reshape(batch_x_verify, shape=[-1, image_height, image_width, 1])
 
             y_pred_verify= model.predict(batch_x_verify)
-            acc_image = model.metric_func(y_pred_verify, batch_y_verify)
-            if(acc_image>accuracy):
-                accuracy = acc_image
-            print("第{}次训练 >>>  最高测试准确率为 {:.5f}".format(step, accuracy))
-            print("[训练集] 字符准确率为 {:.5f} 验证准确率为 {:.5f} >>> loss {:.10f}".format(acc_char, acc_image, loss))
+            vaild_acc_char_count,vaild_acc_image_count = model.metric_func(y_pred_verify, batch_y_verify)
+            if(vaild_acc_image_count>accuracy):
+                accuracy = vaild_acc_image_count
+            print("第{}次训练 >>> 最高测试准确率为 {:.5f}".format(step, accuracy))
+            print("[训练集] 字符准确率为 {:.5f} 图片准确率为 {:.5f} >>> loss {:.10f}".format(train_acc_char_count, train_acc_image_count, loss))
+
+            print("[验证集] 字符准确率为 {:.5f} 图片准确率为 {:.5f} >>> loss {:.10f}".format(vaild_acc_char_count, vaild_acc_image_count, loss))
             with summary_writer.as_default():  # 指定记录器
                 tf.summary.scalar("loss", loss, step=step)  # 将当前损失函数的值写入记录器
-                tf.summary.scalar("Testaccuracy", acc_image, step=step,description="test")
-                tf.summary.scalar("Trainaccuracy", acc_char, step=step,description="Train")
+                tf.summary.scalar("Testaccuracy", train_acc_char_count, step=step,description="test")
+                tf.summary.scalar("Trainaccuracy", vaild_acc_char_count, step=step,description="Train")
 
             if step % 1000 == 0:
                 checkpoint.save(save_point)
@@ -307,7 +310,7 @@ if __name__ == '__main__':
                 # break
                 #
             # 如果准确率大于50%,保存模型,完成训练
-            if acc_image.numpy() > 0.999:
+            if accuracy.numpy() > 0.999:
                     print("good nice")
                     tf.saved_model.save(model, './model/crack_capcha.h5')
                     break
