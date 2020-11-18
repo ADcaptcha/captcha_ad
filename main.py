@@ -310,7 +310,7 @@ if __name__ == '__main__':
                 # break
                 #
             # 如果准确率大于50%,保存模型,完成训练
-            if accuracy.numpy() > 0.999:
+            if accuracy > 0.999:
                     print("good nice")
                     tf.saved_model.save(model, './model/crack_capcha.h5')
                     break
